@@ -1,0 +1,17 @@
+The goal of this laboratory activity was to implement a simple algorithm for line following using our TurtleBot. The robot was equipped with a line sensor array, which allowed it to detect the presence of a line on the ground.
+The line sensor array consisted of multiple infrared sensors that could detect the contrast between the line and the background surface. In our case the sensor was placed on the front side of the rover. 
+The robot was programmed to follow the line by adjusting its speed and direction based on the sensor readings. 
+In particular we implemented two algorithms: 
+\begin{itemize}
+    \item A simple initial algorithm that used the sensor readings to determine whether the robot was on the line, off to the left, or off to the right. Based on this information, the robot adjusted its speed and direction to stay on the line.
+    \item A more advanced algorithm, i.e. the yaw controller, which used the sensor readings to calculate the error in the robot's position relative to the line. The robot then adjusted its speed and direction based on this error, allowing it to follow the line more accurately.
+\end{itemize}
+
+\subsection{Model of the robot}
+\input{lab4/model.tex}
+
+\subsection{Implementation of the simple controller}
+\input{lab4/simple_controller.tex}
+
+\subsection{Implementation of the yaw controller}
+\input{lab4/yaw_controller.tex}

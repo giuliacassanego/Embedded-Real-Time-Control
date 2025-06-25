@@ -1,0 +1,98 @@
+As initial approach we implemented a simple controller with the goal of keeping the robot on the line.
+The controller was designed to to adjust the direction of the robot, by increasing the rotation speed of one wheel and decreasing the other, based on the readings of the line sensor array.
+
+The global variables used in the code are shown in Code~\ref{lst:global}. 
+These include the speeds of the motors (in RPM), reference values, control errors, and proportional-integral control terms for each motor. 
+Gains Kp and Ki are used in the PI controller to regulate the motor speed based on the error. 
+Variables are defined separately for motor 1 (controlled via timer 3) and motor 2 (controlled via timer 4).
+\begin{lstlisting}[language=C, caption={Global variables}, label={lst:global}]
+// motor 1
+float TIM3_speed; // Speed of motor 1 in RPM
+float reference_speed = 0; //RPM
+float speed_error; 
+static float u_int; // Integral term for speed control
+float u_p; // Proportional term for speed control
+float u_pi; // Proportional-Integral term for speed control
+float Kp = 0.5;  // Proportional gain
+float Ki = 6;    // Integral gain
+uint32_t TIM3_CurrentCount;
+int32_t TIM3_DiffCount;
+static uint32_t TIM3_PreviousCount = 0;
+float duty;
+
+// motor 2
+float TIM4_speed; // Speed of motor 2 in RPM
+float reference_speed2 = 0; //RPM
+float speed_error2;
+static float u_int2; // Integral term for speed control
+float u_p2; // Proportional term for speed control
+float u_pi2; // Proportional-Integral term for speed control
+float Kp2 = 0.5;  // Proportional gain
+float Ki2 = 6;    // Integral gain
+uint32_t TIM4_CurrentCount;
+int32_t TIM4_DiffCount;
+static uint32_t TIM4_PreviousCount = 0;
+float duty2;
+\end{lstlisting}
+
+First of all, we checked the status of the line sensor, and we saved it in an array, where each element represents the status of a sensor (active [1] or not active [0]).
+\begin{lstlisting}[language=C, caption={Status sensor line}, label={lst:sens_line}]
+uint8_t sensor_line;
+HAL_StatusTypeDef status_sens_line = HAL_I2C_Mem_Read(
+    &hi2c1,
+    SX1509_I2C_ADDR1 << 1,
+    REG_DATA_B,
+    1,
+    &sensor_line,
+    1,
+    I2C_TIMEOUT);
+for (int i = 0; i < 8; i++) {
+    if ((sensor_line >> i) & 0x01) {
+        active_pins[i] = 1;
+    } else {
+        active_pins[i] = 0;
+    }
+}
+\end{lstlisting}
+% TODO: check se codice c'è già nella parte del lab1
+
+Next, inside the \texttt{HAL\_TIM\_PeriodElapsedCallback(TIM\_HandleTypeDef *htim)} function, we read the array \texttt{active\_pins} and we implemented the simple controller.
+We decided to monitor only the pins on the far left (\texttt{active\_pins[0..2]}) and the far right (\texttt{active\_pins[5..7]}) to determine if the robot is drifting off the line.
+Based on which pins are active, we adjust the reference speed of one motor to induce a turning behavior (see Code~\ref{lst:simple_alg}).
+It is important to note that the \texttt{if} statements are not mutually exclusive, so if multiple conditions are satisfied, the last one overrides the previous ones.
+This allows for a graded control based on how far the robot is from the center.
+The logic focuses on turning by modifying only one of the two motors. For instance, if the robot needs to turn left, only the speed of motor 2 is increased, while motor 1 remains unchanged (default speed of 0 unless otherwise specified).
+\begin{lstlisting}[language=C, caption={Simple algorithm}, label={lst:simple_alg}]
+    //turn left
+	if(active_pins[0])
+		reference_speed2 = 10;
+	else if(active_pins[0] && active_pins[1])
+		reference_speed2 = 25;
+	else if(active_pins[0] && active_pins[1] && active_pins[2])
+		reference_speed2 = 37;
+
+	//turn right
+	if(active_pins[7])
+		reference_speed = 10;
+	else if(active_pins[7] && active_pins[6])
+		reference_speed = 25;
+	else if(active_pins[7] && active_pins[6] && active_pins[5])
+		reference_speed = 37;
+\end{lstlisting}
+
+To compute the actual motor speed in RPM, we used the \texttt{\_\_HAL\_TIM\_GET\_COUNTER(\&htim3)} function to read the timer value. 
+The RPM is calculated using the difference between the current and previous counter values, normalized with respect to the sampling time and the timer resolution.
+We calculated the error between the reference speed and the current speed. This error is used in a PI (Proportional-Integral) controller to generate a control output, as shown in Code~\ref{lst:speed_control}.
+The integral term accumulates the error over time, while the proportional term reacts to the current error. The final control output \texttt{u\_pi} is used to adjust the PWM duty cycle sent to the motor.
+Note that the integral term \texttt{u\_int} is not bounded or clamped, which may lead to integrator windup if the error persists for a long time. This can be mitigated by adding saturation or anti-windup logic, though it's not implemented in this version.
+\begin{lstlisting}[language=C, caption={Speed control}, label={lst:speed_control}]
+    u_int = u_int + Ki * TS * speed_error;
+    u_p = Kp * speed_error; 
+    u_pi = u_int + u_p;     //Output of the PI controller
+\end{lstlisting}
+
+Finally, the PWM duty cycle is set using either the \textbf{Forward and Coast} method --- one motor terminal receives the PWM signal and the other is grounded. 
+Alternatively, the \textbf{Forward and Brake} method can be used, where one terminal receives the PWM signal and the other is connected to the opposite voltage level, effectively shorting the motor terminals during the off-time. 
+This provides active braking and allows for faster deceleration of the motor.
+The duty cycle is calculated as a percentage of the maximum value, which is typically 100\% for full speed.
+The final duty cycle is applied using the \texttt{\_\_HAL\_TIM\_SET\_COMPARE()} function, which sets the PWM output on the corresponding channel of the timer.
