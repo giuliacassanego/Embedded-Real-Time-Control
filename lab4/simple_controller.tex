@@ -8,7 +8,7 @@ Variables are defined separately for motor 1 (controlled via timer 3) and motor 
 \begin{lstlisting}[language=C, caption={Global variables}, label={lst:global}]
 // motor 1
 float TIM3_speed; // Speed of motor 1 in RPM
-float reference_speed = 0; //RPM
+float reference_speed = 60; //RPM
 float speed_error; 
 static float u_int; // Integral term for speed control
 float u_p; // Proportional term for speed control
@@ -22,7 +22,7 @@ float duty;
 
 // motor 2
 float TIM4_speed; // Speed of motor 2 in RPM
-float reference_speed2 = 0; //RPM
+float reference_speed2 = 60; //RPM
 float speed_error2;
 static float u_int2; // Integral term for speed control
 float u_p2; // Proportional term for speed control
@@ -38,14 +38,8 @@ float duty2;
 First of all, we checked the status of the line sensor, and we saved it in an array, where each element represents the status of a sensor (active [1] or not active [0]).
 \begin{lstlisting}[language=C, caption={Status sensor line}, label={lst:sens_line}]
 uint8_t sensor_line;
-HAL_StatusTypeDef status_sens_line = HAL_I2C_Mem_Read(
-    &hi2c1,
-    SX1509_I2C_ADDR1 << 1,
-    REG_DATA_B,
-    1,
-    &sensor_line,
-    1,
-    I2C_TIMEOUT);
+HAL_StatusTypeDef status_sens_line = HAL_I2C_Mem_Read(&hi2c1,
+    SX1509_I2C_ADDR1 << 1, REG_DATA_B, 1, &sensor_line, 1, I2C_TIMEOUT);
 for (int i = 0; i < 8; i++) {
     if ((sensor_line >> i) & 0x01) {
         active_pins[i] = 1;
@@ -82,7 +76,8 @@ The logic focuses on turning by modifying only one of the two motors. For instan
 
 To compute the actual motor speed in RPM, we used the \texttt{\_\_HAL\_TIM\_GET\_COUNTER(\&htim3)} function to read the timer value. 
 The RPM is calculated using the difference between the current and previous counter values, normalized with respect to the sampling time and the timer resolution.
-We calculated the error between the reference speed and the current speed. This error is used in a PI (Proportional-Integral) controller to generate a control output, as shown in Code~\ref{lst:speed_control}.
+We calculated the error between the reference speed and the current speed: \texttt{speed\_error = reference\_speed - TIM3\_speed;} for motor 1 and \texttt{speed\_error2 = reference\_speed2 - TIM4\_speed;} for motor 2. 
+ This error is used in a PI (Proportional-Integral) controller to generate a control output, as shown in Code~\ref{lst:speed_control}.
 The integral term accumulates the error over time, while the proportional term reacts to the current error. The final control output \texttt{u\_pi} is used to adjust the PWM duty cycle sent to the motor.
 Note that the integral term \texttt{u\_int} is not bounded or clamped, which may lead to integrator windup if the error persists for a long time. This can be mitigated by adding saturation or anti-windup logic, though it's not implemented in this version.
 \begin{lstlisting}[language=C, caption={Speed control}, label={lst:speed_control}]

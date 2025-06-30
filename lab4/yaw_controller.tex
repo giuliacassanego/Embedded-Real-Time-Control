@@ -1,0 +1,39 @@
+To the global variables defined in Listing~\ref{lst:global}, we added the following variables for the yaw controller:
+\begin{lstlisting}[language=C, caption={Global variables for yaw control}, label={lst:global_yaw}]
+float e_num,e_den,e_sl; // line tracking error
+float psi_err; // yaw error
+float V, w_1, w_2; // speed reference after the controller yaw
+float kp_yaw = 7; // proportional gain for yaw control
+float yaw_rate; 
+float lambda[8]; // distance between the sensors and the center of the sensor array
+\end{lstlisting}
+
+As for the previous approach, inside the \texttt{HAL\_TIM\_PeriodElapsedCallback(TIM\_HandleTypeDef *htim)} function, we read the status of the line sensors and saved it in an array, see Listing~\ref{lst:sens_line}.
+And we used it to compute the line tracking error $e_{SL}$, as shown in Listing~\ref{lst:line_tracking_error}, where we resorted to Equation (\ref{eq:lambda_n}), (\ref{eq:e_sl}) and (\ref{eq:psi_err}).
+\begin{lstlisting}[language=C, caption={Line tracking error}, label={lst:line_tracking_error}]
+e_num = e_den = 0;
+
+for(int i=0;i<N;i++){
+    lambda[i] = ((N-1)/2 - i)*P; // distance between sensor n and the center
+    e_num += active_pins[i]*lambda[i]; // distance between sensor n and the center
+    e_den += active_pins[i];
+}
+if(e_den == 0)
+    e_sl = 0;
+else
+    e_sl = e_num / e_den;
+
+psi_err = e_sl / H;
+\end{lstlisting}
+
+The yaw rate is calculated as a proportional term of the psi error as shown in Listing~\ref{lst:yaw_control}, which is then used to adjust the wheel speeds accordingly.
+Indeed, we computed the desired wheel speeds $w_1$ and $w_2$ based on the reference speed and the yaw rate, using Equation~(\ref{eq:omega}), where the reference speed was set to 30 RPM.
+Next, we used them to compute the speed error for each motor: \texttt{speed\_error = w\_1 - TIM3\_speed;} for motor 1 and \texttt{speed\_error2 = w\_2 - TIM4\_speed;} for motor 2.
+\begin{lstlisting}[language=C, caption={Yaw control law}, label={lst:yaw_control}]
+yaw_rate = kp_yaw * psi_err; 
+V = (reference_speed*RPM2RADS)*r; //RADS
+w_1 = ((V + yaw_rate*(D/2))/r)*RADS2RPM; // Right wheel speed
+w_2 = ((V - yaw_rate*(D/2))/r)*RADS2RPM; // Left wheel speed
+\end{lstlisting}
+
+From now on, the code for the speed control of each motor is the same as in the previous approach, see Listing~\ref{lst:speed_control}.
